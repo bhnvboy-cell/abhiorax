@@ -60,12 +60,8 @@ export function NavHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight">
-            <span
-              aria-hidden
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-sm font-black text-primary ring-1 ring-primary/40"
-            >
-              A
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="" aria-hidden className="h-8 w-8 rounded-lg" />
             <span>
               ABHIORAX<span className="text-primary">.</span>
             </span>

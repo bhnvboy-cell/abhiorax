@@ -1,6 +1,20 @@
-# ABHIORAX
+<p align="center">
+  <img src="apps/web/public/logo.svg" alt="ABHIORAX Logo" width="84" height="84" />
+</p>
 
-**A fearless, forward, next-generation social, communication, and creator platform — engineered with WCAG AAA accessibility at its core.**
+<h1 align="center">ABHIORAX</h1>
+
+<p align="center">
+  <strong>A fearless, forward, next-generation social, communication, and creator platform — engineered with WCAG AAA accessibility at its core.</strong>
+</p>
+
+## Brand & Etymology
+
+- **Abhi** — fearless, forward
+- **Ora** — Latin: *horizon*
+- **X** — next-generation innovation
+
+> The **ABHIORAX** name and logo mark (`apps/web/public/logo.svg`) identify this project; please retain attribution when forking or building upon the codebase.
 
 ---
 
@@ -93,3 +107,9 @@ abhioraX/
 ├── docs/                     # Architecture, ADRs, OpenAPI 3.1 spec, UAT plans/reports
 └── infra/                    # Docker Compose local infra stack
 ```
+
+---
+
+## License
+
+Licensed under the [MIT License](LICENSE). Copyright © 2026 ABHIORAX (`bhnvboy-cell`).

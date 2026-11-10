@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="ABHIORAX Logo">
+  <defs>
+    <linearGradient id="ax-bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#16161f" />
+      <stop offset="100%" stop-color="#0b0b12" />
+    </linearGradient>
+    <linearGradient id="ax-cyan" x1="20" y1="20" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#b0edff" />
+      <stop offset="100%" stop-color="#7de3ff" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#ax-bg)" stroke="#7de3ff" stroke-opacity="0.4" stroke-width="3" />
+  <path d="M24 88 C44 72, 84 72, 104 88" stroke="#7de3ff" stroke-opacity="0.45" stroke-width="4" stroke-linecap="round" />
+  <path d="M64 26 L94 96 H79 L72 78 H56 L49 96 H34 L64 26 Z M64 49 L59 66 H69 L64 49 Z" fill="url(#ax-cyan)" />
+  <circle cx="96" cy="34" r="6" fill="#ffd54a" />
+</svg>
