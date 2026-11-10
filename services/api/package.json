@@ -1,0 +1,10 @@
+{
+  "name": "@abhiorax/api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ABHIORAX local API gateway & realtime chat server",
+  "scripts": {
+    "start:dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  }
+}

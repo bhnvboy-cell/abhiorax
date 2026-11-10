@@ -1,0 +1,947 @@
+openapi: 3.1.0
+info:
+  title: ABHIORAX Platform API
+  version: 1.0.0
+  description: |
+    REST + GraphQL contract for the ABHIORAX social, communication and creator platform.
+    All endpoints are served behind the API Gateway. Error envelope is uniform,
+    rate limits are per-user/per-IP and returned via headers.
+servers:
+  - url: https://api.abhiorax.com/v1
+    description: Global edge (latency-routed)
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Users
+  - name: Posts
+  - name: Feed
+  - name: Chat
+  - name: Notifications
+  - name: Search
+  - name: Creator
+  - name: Monetization
+  - name: Admin
+  - name: Trust & Safety
+  - name: Accessibility
+paths:
+  # ============================== AUTH ==============================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Account created (verification email sent)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email/password (may require MFA challenge)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '202':
+          description: MFA required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaChallenge' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/mfa/verify:
+    post:
+      tags: [Auth]
+      summary: Complete MFA challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaVerifyRequest' }
+      responses:
+        '200':
+          description: Verified, tokens issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token
+      security:
+        - bearerAuth: []
+        - refreshToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, description: Opaque rotating refresh token }
+      responses:
+        '200':
+          description: New token pair (old refresh token invalidated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+  /auth/oauth/{provider}:
+    get:
+      tags: [Auth]
+      summary: OAuth2 authorization redirect (Google, GitHub)
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, github] }
+      responses:
+        '302':
+          description: Redirect to IdP
+  /auth/oauth/{provider}/callback:
+    get:
+      tags: [Auth]
+      summary: OAuth2 callback (PKCE)
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, github] }
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Exchange succeeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+  /auth/mfa/enable:
+    post:
+      tags: [Auth]
+      summary: Generate TOTP secret + backup codes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: TOTP provisioning payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaSetup' }
+  /auth/mfa/confirm:
+    post:
+      tags: [Auth]
+      summary: Confirm and activate MFA
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: MFA enabled
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current device session
+      security:
+        - bearerAuth: []
+      responses:
+        '204': { description: Revoked }
+
+  # ============================== USERS ==============================
+  /users/{username}:
+    get:
+      tags: [Users]
+      summary: Get public profile (respects privacy controls)
+      security: []
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get own full profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+    patch:
+      tags: [Users]
+      summary: Update profile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+  /users/me/privacy:
+    patch:
+      tags: [Users]
+      summary: Update privacy controls
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrivacySettings' }
+      responses:
+        '200':
+          description: Privacy updated
+  /users/{username}/follow:
+    post:
+      tags: [Users]
+      summary: Follow a user (idempotent)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Following state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  following: { type: boolean }
+  /users/{username}/followers:
+    get:
+      tags: [Users]
+      summary: Paginated followers
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        '200':
+          description: Followers
+  /users/{username}/following:
+    get:
+      tags: [Users]
+      summary: Paginated following list
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Following list
+
+  # ============================== POSTS ==============================
+  /posts:
+    post:
+      tags: [Posts]
+      summary: Create a post (text/image/video/story/reel)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/CreatePost' }
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+    get:
+      tags: [Posts]
+      summary: Fetch a single post by id
+      security: []
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+  /posts/{id}:
+    get:
+      tags: [Posts]
+      summary: Get post by id
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+    delete:
+      tags: [Posts]
+      summary: Delete (soft) own post
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+  /posts/{id}/like:
+    post:
+      tags: [Posts]
+      summary: Like a post (idempotent)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: New like state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  liked: { type: boolean }
+                  likeCount: { type: integer }
+  /posts/{id}/reactions:
+    post:
+      tags: [Posts]
+      summary: React to a post
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reaction]
+              properties:
+                reaction:
+                  type: string
+                  enum: [like, love, haha, wow, sad, angry, care]
+      responses:
+        '200': { description: Reacted }
+  /posts/{id}/comments:
+    get:
+      tags: [Posts]
+      summary: Comments on a post (threaded, cursor paged)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Comment thread
+    post:
+      tags: [Posts]
+      summary: Add a comment
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, minLength: 1, maxLength: 1000 }
+                parentId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Comment created
+
+  # ============================== FEED ==============================
+  /feed:
+    get:
+      tags: [Feed]
+      summary: AI-ranked personalized feed (infinite scroll)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 50, default: 20 } }
+        - { name: refresh, in: query, schema: { type: boolean }, description: Bypass cache for fresh ranking }
+      responses:
+        '200':
+          description: Ranked feed page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeedPage' }
+  /feed/for-you:
+    get:
+      tags: [Feed]
+      summary: Discovery feed (reels/watch-time optimized)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: For-you page
+  /trending:
+    get:
+      tags: [Feed]
+      summary: Trending topics and hashtags (real-time)
+      security: []
+      parameters:
+        - { name: region, in: query, schema: { type: string, default: global } }
+      responses:
+        '200':
+          description: Trending list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  topics:
+                    type: array
+                    items: { $ref: '#/components/schemas/TrendingTopic' }
+
+  # ============================== CHAT ==============================
+  /chat/conversations:
+    get:
+      tags: [Chat]
+      summary: List conversations
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Conversations with last message + unread count
+  /chat/conversations:
+    post:
+      tags: [Chat]
+      summary: Create/upsert direct conversation
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [participantId]
+              properties:
+                participantId: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Conversation
+  /chat/conversations/{conversationId}/messages:
+    get:
+      tags: [Chat]
+      summary: Message history (cursor paged)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: conversationId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Messages
+  /chat/conversations/{conversationId}/messages/{messageId}/read:
+    post:
+      tags: [Chat]
+      summary: Mark message read (also marks earlier ones)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: conversationId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Acknowledged }
+
+  # ============================== NOTIFICATIONS ==============================
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: In-app notifications (cursor paged)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: filter, in: query, schema: { type: string, enum: [all, unread] } }
+      responses:
+        '200':
+          description: Notifications
+  /notifications/read:
+    post:
+      tags: [Notifications]
+      summary: Mark all as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Done }
+  /notifications/push-token:
+    put:
+      tags: [Notifications]
+      summary: Register FCM/APNS token
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, token]
+              properties:
+                platform: { type: string, enum: [fcm, apns] }
+                token: { type: string }
+      responses:
+        '204': { description: Registered }
+
+  # ============================== SEARCH ==============================
+  /search:
+    get:
+      tags: [Search]
+      summary: Unified search (users, posts, hashtags, topics)
+      security: []
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+        - { name: type, in: query, schema: { type: string, enum: [all, users, posts, hashtags] } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Search results
+  /search/semantic:
+    post:
+      tags: [Search]
+      summary: Semantic (embedding-based) search
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                topK: { type: integer, maximum: 100 }
+      responses:
+        '200':
+          description: Ranked semantic hits
+
+  # ============================== CREATOR / ANALYTICS ==============================
+  /creator/dashboard:
+    get:
+      tags: [Creator]
+      summary: Creator intelligence dashboard (reach, watch time, revenue)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Aggregated metrics
+  /creator/posts/schedule:
+    post:
+      tags: [Creator]
+      summary: Schedule a post for future publish
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [postId, publishAt]
+              properties:
+                postId: { type: string, format: uuid }
+                publishAt: { type: string, format: date-time }
+      responses:
+        '202': { description: Scheduled }
+  /creator/drafts:
+    get:
+      tags: [Creator]
+      summary: List drafts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Drafts }
+
+  # ============================== MONETIZATION ==============================
+  /creator/account:
+    get:
+      tags: [Monetization]
+      summary: Creator account + payout method status
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Creator account }
+    post:
+      tags: [Monetization]
+      summary: Create/enable creator account
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201': { description: Enabled }
+  /creator/payouts:
+    get:
+      tags: [Monetization]
+      summary: Payout history
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Payouts }
+    post:
+      tags: [Monetization]
+      summary: Request payout (idempotent via Idempotency-Key)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, minimum: 0.01 }
+                currency: { type: string, default: USD }
+                method: { type: string, enum: [stripe, paypal, bank] }
+      responses:
+        '202':
+          description: Payout queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payoutId: { type: string, format: uuid }
+  /creator/subscriptions:
+    post:
+      tags: [Monetization]
+      summary: Subscribe to a creator
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [creatorId, tier]
+              properties:
+                creatorId: { type: string, format: uuid }
+                tier: { type: string }
+      responses:
+        '201': { description: Subscribed }
+
+  # ============================== ADMIN ==============================
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Global platform KPIs
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Platform stats }
+  /admin/reports:
+    get:
+      tags: [Admin]
+      summary: Open moderation queue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, under_review, escalated] } }
+      responses:
+        '200': { description: Report queue }
+  /admin/reports/{id}/resolve:
+    post:
+      tags: [Admin]
+      summary: Resolve a report with action
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [approve, remove, restrict, shadow_ban] }
+                reason: { type: string }
+      responses:
+        '200': { description: Resolved }
+
+  # ============================== TRUST & SAFETY ==============================
+  /tns/report:
+    post:
+      tags: [Trust & Safety]
+      summary: Submit a report
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequest' }
+      responses:
+        '201': { description: Report filed }
+
+  # ============================== ACCESSIBILITY ==============================
+  /accessibility/report:
+    post:
+      tags: [Accessibility]
+      summary: Push WCAG AAA compliance scan results (internal service)
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/A11yReport' }
+      responses:
+        '204': { description: Recorded }
+  /accessibility/report/{resourceType}/{resourceId}:
+    get:
+      tags: [Accessibility]
+      summary: Retrieve compliance snapshot for a resource
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: resourceType, in: path, required: true, schema: { type: string } }
+        - { name: resourceId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Compliance record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/A11yReport' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshToken:
+      type: apiKey
+      in: header
+      name: X-Refresh-Token
+    serviceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Service-to-service (mTLS alternative)
+  headers:
+    RateLimit-Limit:
+      schema: { type: integer }
+      description: Requests allowed in the window
+    RateLimit-Remaining:
+      schema: { type: integer }
+    RateLimit-Reset:
+      schema: { type: integer }
+      description: Seconds until window reset
+  responses:
+    Unauthorized:
+      description: Invalid or expired credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PayloadTooLarge:
+      description: Media exceeds size limit (image 20MB, video 500MB)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Rate limited
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+        headers:
+          RateLimit-Limit: { $ref: '#/components/headers/RateLimit-Limit' }
+          RateLimit-Remaining: { $ref: '#/components/headers/RateLimit-Remaining' }
+          RateLimit-Reset: { $ref: '#/components/headers/RateLimit-Reset' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            requestId: { type: string, description: Traceable via X-Request-Id }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username: { type: string, pattern: '^[a-zA-Z0-9_]{3,30}$' }
+        email: { type: string, format: email, maxLength: 320 }
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: Requires upper, lower, digit
+        locale: { type: string, default: en }
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string, description: Email or username }
+        password: { type: string }
+        deviceName: { type: string }
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        accessTokenExpiresIn: { type: integer, example: 900 }
+        refreshToken: { type: string }
+        user: { $ref: '#/components/schemas/Profile' }
+    MfaChallenge:
+      type: object
+      properties:
+        mfaChallengeId: { type: string, format: uuid }
+        methods: { type: array, items: { type: string } }
+        hint: { type: string }
+    MfaVerifyRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId: { type: string, format: uuid }
+        code: { type: string, minLength: 6, maxLength: 8 }
+    MfaSetup:
+      type: object
+      properties:
+        secret: { type: string }
+        otpauthUrl: { type: string }
+        backupCodes: { type: array, items: { type: string } }
+    Profile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        bio: { type: string }
+        avatarUrl: { type: string }
+        bannerUrl: { type: string }
+        verified: { type: boolean }
+        followerCount: { type: integer }
+        followingCount: { type: integer }
+        postCount: { type: integer }
+        isFollowing: { type: boolean }
+        locale: { type: string }
+        rtl: { type: boolean }
+    ProfileUpdate:
+      type: object
+      properties:
+        displayName: { type: string, maxLength: 50 }
+        bio: { type: string, maxLength: 500 }
+        avatarUrl: { type: string, format: uri }
+        bannerUrl: { type: string, format: uri }
+        website: { type: string, format: uri }
+        location: { type: string, maxLength: 100 }
+        accessibility: { $ref: '#/components/schemas/AccessibilityPrefs' }
+    PrivacySettings:
+      type: object
+      properties:
+        profile: { type: string, enum: [public, followers, only_me] }
+        posts: { type: string, enum: [public, followers, only_me] }
+        activity: { type: string, enum: [everyone, followers, no_one] }
+        searchable: { type: boolean }
+        messages: { type: string, enum: [everyone, followers, no_one] }
+        tagsEnabled: { type: boolean }
+    AccessibilityPrefs:
+      type: object
+      properties:
+        preferReducedMotion: { type: boolean }
+        highContrast: { type: boolean }
+        largeText: { type: boolean }
+        altTextDefault: { type: string, enum: [ask, always, never] }
+        captions: { type: string, enum: [auto, always, off] }
+    CreatePost:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, maxLength: 4000 }
+        type: { type: string, enum: [text, image, video, story, reel, audio] }
+        visibility: { type: string, enum: [public, followers, only_me, custom], default: public }
+        media:
+          type: array
+          items:
+            type: object
+            properties:
+              file: { type: string, format: binary }
+              altText: { type: string, maxLength: 500, description: WCAG AAA required for meaningful media }
+        scheduledAt: { type: string, format: date-time }
+        expiresInHours: { type: integer, description: For stories (default 24) }
+    Post:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        author: { $ref: '#/components/schemas/Profile' }
+        type: { type: string }
+        content: { type: string }
+        media: { type: array, items: { type: object } }
+        hashtags: { type: array, items: { type: string } }
+        likeCount: { type: integer }
+        commentCount: { type: integer }
+        shareCount: { type: integer }
+        viewCount: { type: integer }
+        likedByMe: { type: boolean }
+        publishedAt: { type: string, format: date-time }
+    FeedPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Post' }
+        nextCursor: { type: string }
+        rankedAt: { type: string, format: date-time }
+    TrendingTopic:
+      type: object
+      properties:
+        name: { type: string }
+        postCount: { type: integer }
+        score: { type: number }
+        region: { type: string }
+    ReportRequest:
+      type: object
+      required: [targetType, targetId, reason]
+      properties:
+        targetType: { type: string, enum: [post, user, comment, message, group] }
+        targetId: { type: string, format: uuid }
+        reason: { type: string, enum: [spam, hate_speech, bullying, nudity, violence, scam, impersonation, copyright, self_harm, other] }
+        details: { type: string, maxLength: 2000 }
+    A11yReport:
+      type: object
+      required: [resourceType, resourceId, passedRules, failedRules, violationsCount]
+      properties:
+        resourceType: { type: string }
+        resourceId: { type: string }
+        wcagVersion: { type: string, default: '2.2' }
+        conformanceLevel: { type: string, default: AAA }
+        passedRules: { type: array, items: { type: string } }
+        failedRules:
+          type: array
+          items:
+            type: object
+            properties:
+              rule: { type: string }
+              impact: { type: string }
+              nodes: { type: array, items: { type: string } }
+        violationsCount: { type: integer }
+        contrastMin: { type: number }

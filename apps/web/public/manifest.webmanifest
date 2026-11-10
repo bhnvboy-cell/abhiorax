@@ -1,0 +1,9 @@
+{
+  "name": "ABHIORAX — Accessible Social & Creator Platform",
+  "short_name": "ABHIORAX",
+  "description": "Fearless, forward, WCAG AAA accessible social, communication and creator platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0c10",
+  "theme_color": "#38bdf8"
+}

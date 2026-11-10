@@ -1,0 +1,33 @@
+{
+  "name": "abhiorax",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ABHIORAX — fearless, next-generation social, communication and creator platform",
+  "workspaces": [
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace=@abhiorax/api",
+    "dev:web": "npm run dev --workspace=@abhiorax/web",
+    "dev:ai": "cd services/ai && python -m uvicorn app.main:app --reload --port 8000",
+    "ai:test": "cd services/ai && python -m pytest tests -q",
+    "dev:stack": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:cov --workspaces --if-present",
+    "format": "prettier --write .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "npm run migrate --workspace=@abhiorax/api",
+    "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infra/docker/docker-compose.yml down"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5"
+  }
+}
